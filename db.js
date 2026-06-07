@@ -28,7 +28,12 @@ async function init() {
     )
   `);
 }
-const ready = init();
+// Swallow init failures here so a transient connection error doesn't crash
+// the process via an unhandled rejection; queries will surface their own
+// errors (caught by server.js route handlers) if the DB is unreachable.
+const ready = init().catch((err) => {
+  console.error('DB initialization failed:', err);
+});
 
 async function createUser(email, passwordHash) {
   await ready;
