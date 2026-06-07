@@ -258,6 +258,7 @@
     }
     .month-btn:hover { border-color: var(--primary); color: var(--primary); }
     .month-label { font-size: 17px; font-weight: 700; }
+    .period-range-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-top: 2px; }
 
     /* View toggle (month/week) */
     .view-toggle {
@@ -686,7 +687,7 @@ let currentTab = 'input';
 let viewMonth = toYearMonth(new Date());
 let summaryView = 'month'; // 'month' | 'week'
 let transactions = [];
-let settings = { monthlyIncome: 0, incomeName: '給与', fixedExpenses: [], categoryBudgets: {}, customCategories: [], hiddenCategories: [] };
+let settings = { monthlyIncome: 0, incomeName: '給与', fixedExpenses: [], categoryBudgets: {}, customCategories: [], hiddenCategories: [], closingType: 'month_end', paydayDay: 25 };
 
 // Selected in input form
 let selectedType = 'expense';
@@ -748,6 +749,41 @@ function formatMonth(ym) { const d = new Date(ym + '-01'); return `${d.getFullYe
 function today() { return new Date().toISOString().slice(0, 10); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
+// ── 期間（締め日基準）ヘルパー ─────────────────────────────
+// ローカル日付を 'YYYY-MM-DD' に整形（toISOString はUTC変換されるため使わない）
+function toISODate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function formatMD(dateStr) {
+  const [, m, d] = dateStr.split('-').map(Number);
+  return `${m}/${d}`;
+}
+
+// 月ラベル(YYYY-MM)が表す実際の期間（開始日〜終了日）を返す
+// 給料日締めの場合: 「YYYY-MM」は前月(締め日+1日)〜当月(締め日)を表す
+function getPeriodRange(month) {
+  const [y, m] = month.split('-').map(Number);
+  if (settings.closingType === 'payday' && settings.paydayDay) {
+    const D = settings.paydayDay;
+    const endDate   = new Date(y, m - 1, D);
+    const startDate = new Date(y, m - 2, D + 1);
+    return { start: toISODate(startDate), end: toISODate(endDate) };
+  }
+  const startDate = new Date(y, m - 1, 1);
+  const endDate   = new Date(y, m, 0);
+  return { start: toISODate(startDate), end: toISODate(endDate) };
+}
+
+// 締め日基準のときに期間の実日付範囲をラベルとして返す（例: 5/26 〜 6/25）
+function formatPeriodRange(month) {
+  if (settings.closingType !== 'payday') return '';
+  const { start, end } = getPeriodRange(month);
+  return `${formatMD(start)} 〜 ${formatMD(end)}`;
+}
+
 function getCat(id) {
   return getAllCategories().find(c => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
 }
@@ -760,7 +796,8 @@ function showToast(msg) {
 }
 
 function getMonthTransactions(month) {
-  return transactions.filter(tx => tx.date.startsWith(month));
+  const { start, end } = getPeriodRange(month);
+  return transactions.filter(tx => tx.date >= start && tx.date <= end);
 }
 
 function activeFixed(month) {
@@ -777,6 +814,18 @@ function getMonthTotals(month) {
   const totalExpense = varExpense + fixedTotal;
   const totalIncome  = (incomeActive ? settings.monthlyIncome : 0) + varIncome;
   return { varExpense, varIncome, fixedTotal, fixedList, totalExpense, totalIncome, incomeActive, balance: totalIncome - totalExpense };
+}
+
+// 指定した年(YYYY)の12期間ぶんを合算した年間収支を返す
+function getYearTotals(year) {
+  let totalIncome = 0, totalExpense = 0;
+  for (let m = 1; m <= 12; m++) {
+    const ym = `${year}-${String(m).padStart(2, '0')}`;
+    const t = getMonthTotals(ym);
+    totalIncome += t.totalIncome;
+    totalExpense += t.totalExpense;
+  }
+  return { totalIncome, totalExpense, balance: totalIncome - totalExpense };
 }
 
 // ── Tab switching ──────────────────────────────────────────
@@ -1054,11 +1103,17 @@ function renderSummary() {
 
   const d = new Date(viewMonth + '-01');
   const label = `${d.getFullYear()}年${d.getMonth()+1}月`;
+  const periodRangeLabel = formatPeriodRange(viewMonth);
+
+  const year = d.getFullYear();
+  const yearTotals = getYearTotals(year);
+  const yearBalanceColor = yearTotals.balance >= 0 ? 's-income' : 's-expense';
+  const yearBalanceSign  = yearTotals.balance >= 0 ? '+' : '-';
 
   return `
     <div class="month-nav">
       <button class="month-btn" onclick="changeMonth(-1)">◀</button>
-      <span class="month-label">${label}</span>
+      <span class="month-label">${label}${periodRangeLabel ? `<span class="period-range-label">${periodRangeLabel}</span>` : ''}</span>
       <button class="month-btn" onclick="changeMonth(1)">▶</button>
     </div>
 
@@ -1074,6 +1129,24 @@ function renderSummary() {
       <div class="summary-card full">
         <div class="s-label">残高</div>
         <div class="s-amount ${balanceColor}">${balanceSign}${formatYen(balance)}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📈 ${year}年の年間収支</div>
+      <div class="summary-grid" style="margin-top:10px;margin-bottom:0">
+        <div class="summary-card">
+          <div class="s-label">💰 年間収入</div>
+          <div class="s-amount s-income">${formatYen(yearTotals.totalIncome)}</div>
+        </div>
+        <div class="summary-card">
+          <div class="s-label">💸 年間支出</div>
+          <div class="s-amount s-expense">${formatYen(yearTotals.totalExpense)}</div>
+        </div>
+        <div class="summary-card full">
+          <div class="s-label">年間残高</div>
+          <div class="s-amount ${yearBalanceColor}">${yearBalanceSign}${formatYen(yearTotals.balance)}</div>
+        </div>
       </div>
     </div>
 
@@ -1124,11 +1197,17 @@ function setSummaryView(view) {
 }
 
 function getWeekRanges(month) {
-  const [y, m] = month.split('-').map(Number);
-  const lastDay = new Date(y, m, 0).getDate();
+  const { start, end } = getPeriodRange(month);
+  const endDate = new Date(end + 'T00:00:00');
+  let cur = new Date(start + 'T00:00:00');
   const ranges = [];
-  for (let start = 1; start <= lastDay; start += 7) {
-    ranges.push({ start, end: Math.min(start + 6, lastDay) });
+  while (cur <= endDate) {
+    const rangeStart = toISODate(cur);
+    const rangeEndDate = new Date(cur);
+    rangeEndDate.setDate(rangeEndDate.getDate() + 6);
+    if (rangeEndDate > endDate) rangeEndDate.setTime(endDate.getTime());
+    ranges.push({ start: rangeStart, end: toISODate(rangeEndDate) });
+    cur.setDate(cur.getDate() + 7);
   }
   return ranges;
 }
@@ -1136,11 +1215,10 @@ function getWeekRanges(month) {
 function renderWeeklyBreakdown() {
   const txs = getMonthTransactions(viewMonth);
   const ranges = getWeekRanges(viewMonth);
-  const monthNum = parseInt(viewMonth.split('-')[1], 10);
 
   return ranges.map((r, i) => {
     const weekTxs = txs
-      .filter(t => { const day = parseInt(t.date.slice(8, 10), 10); return day >= r.start && day <= r.end; })
+      .filter(t => t.date >= r.start && t.date <= r.end)
       .sort((a, b) => b.date.localeCompare(a.date));
 
     const wIncome  = weekTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
@@ -1169,7 +1247,7 @@ function renderWeeklyBreakdown() {
     return `
       <div class="card">
         <div class="week-header">
-          <span class="week-title">第${i + 1}週<span class="week-range">${monthNum}/${r.start} 〜 ${monthNum}/${r.end}</span></span>
+          <span class="week-title">第${i + 1}週<span class="week-range">${formatMD(r.start)} 〜 ${formatMD(r.end)}</span></span>
           <div class="week-totals">
             <span class="amount-income">+${formatYen(wIncome)}</span>
             <span class="amount-expense">-${formatYen(wExpense)}</span>
@@ -1313,7 +1391,34 @@ function renderSettingsHTML() {
       </div>`;
   }).join('');
 
+  const paydayOptions = Array.from({ length: 28 }, (_, i) => i + 1)
+    .map(d => `<option value="${d}" ${settings.paydayDay === d ? 'selected' : ''}>${d}日</option>`)
+    .join('');
+
   return `
+    <div class="settings-section">
+      <div class="settings-section-title">📅 締め日の設定</div>
+      <div class="card">
+        <div class="form-group" style="margin-bottom:12px">
+          <label class="form-label">集計の基準</label>
+          <select class="form-input" id="set-closing-type" onchange="onClosingTypeChange()">
+            <option value="month_end" ${settings.closingType !== 'payday' ? 'selected' : ''}>月末締め（1日〜末日）</option>
+            <option value="payday" ${settings.closingType === 'payday' ? 'selected' : ''}>給料日締め</option>
+          </select>
+        </div>
+        <div class="form-group" id="payday-picker-group" style="margin-bottom:12px;${settings.closingType === 'payday' ? '' : 'display:none'}">
+          <label class="form-label">給料日</label>
+          <select class="form-input" id="set-payday-day">
+            ${paydayOptions}
+          </select>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:6px">
+            例：25日締めの場合、「6月」は5/26〜6/25の収支として集計されます
+          </p>
+        </div>
+        <button class="btn-primary" onclick="saveClosingSettings()">締め日を保存</button>
+      </div>
+    </div>
+
     <div class="settings-section">
       <div class="settings-section-title">💼 月の収入設定</div>
       <div class="card income-setting">
@@ -1399,6 +1504,21 @@ function renderSettingsHTML() {
 }
 
 function bindSettings() {}
+
+function onClosingTypeChange() {
+  const type = document.getElementById('set-closing-type').value;
+  document.getElementById('payday-picker-group').style.display = type === 'payday' ? '' : 'none';
+}
+
+function saveClosingSettings() {
+  const type = document.getElementById('set-closing-type').value;
+  const day  = parseInt(document.getElementById('set-payday-day').value) || 25;
+  settings.closingType = type;
+  settings.paydayDay   = day;
+  saveSettings();
+  showToast('締め日を保存しました');
+  render();
+}
 
 function saveCategoryBudgets() {
   const budgets = {};
