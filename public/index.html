@@ -1,0 +1,1496 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>家計簿</title>
+  <style>
+    :root {
+      --primary: #5C6BC0;
+      --primary-light: #E8EAF6;
+      --bg: #F5F6FA;
+      --card: #FFFFFF;
+      --text: #2D3748;
+      --text-muted: #718096;
+      --expense: #E53E3E;
+      --expense-light: #FFF5F5;
+      --income: #38A169;
+      --income-light: #F0FFF4;
+      --border: #E2E8F0;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      background: var(--primary);
+      color: white;
+      padding: 16px 20px 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+    .header .subtitle { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+    .header-row { display: flex; align-items: center; justify-content: space-between; }
+    .logout-btn {
+      background: rgba(255,255,255,0.18);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .logout-btn:hover { background: rgba(255,255,255,0.28); }
+
+    /* Tab Navigation */
+    .tab-nav {
+      background: white;
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 58px;
+      z-index: 99;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px 4px 8px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      transition: color 0.2s;
+    }
+    .tab-btn .tab-icon { font-size: 18px; }
+    .tab-btn.active { color: var(--primary); font-weight: 600; }
+    .tab-btn.active .tab-icon { transform: scale(1.1); }
+
+    /* Content */
+    .content { flex: 1; padding: 16px; }
+
+    /* Cards */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .card-title {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    /* Input Tab */
+    .form-group { margin-bottom: 14px; }
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .form-input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-size: 16px;
+      color: var(--text);
+      background: white;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: inherit;
+    }
+    .form-input:focus { border-color: var(--primary); }
+
+    .amount-input-wrap { position: relative; }
+    .amount-input-wrap .currency {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 16px;
+      color: var(--text-muted);
+    }
+    .amount-input-wrap .form-input { padding-left: 28px; }
+
+    /* Category grid */
+    .cat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .cat-btn {
+      padding: 10px 6px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      background: white;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+    .cat-btn .cat-icon { font-size: 20px; display: block; }
+    .cat-btn .cat-name { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .cat-btn.selected {
+      border-color: var(--primary);
+      background: var(--primary-light);
+    }
+    .cat-btn.selected .cat-name { color: var(--primary); font-weight: 600; }
+
+    /* Type toggle */
+    .type-toggle {
+      display: flex;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .type-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+    .type-btn.active-expense { background: var(--expense-light); color: var(--expense); }
+    .type-btn.active-income { background: var(--income-light); color: var(--income); }
+
+    /* Submit button */
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      font-family: inherit;
+      letter-spacing: 0.5px;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:active { opacity: 0.8; transform: scale(0.99); }
+
+    /* Recent list */
+    .recent-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .recent-title { font-size: 14px; font-weight: 700; }
+    .recent-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .recent-item:last-child { border-bottom: none; }
+    .recent-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .recent-info { flex: 1; min-width: 0; }
+    .recent-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .recent-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .recent-amount { font-size: 15px; font-weight: 700; flex-shrink: 0; }
+    .amount-expense { color: var(--expense); }
+    .amount-income { color: var(--income); }
+
+    /* Month nav */
+    .month-nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .month-btn {
+      width: 36px;
+      height: 36px;
+      border: 1.5px solid var(--border);
+      border-radius: 50%;
+      background: white;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    .month-btn:hover { border-color: var(--primary); color: var(--primary); }
+    .month-label { font-size: 17px; font-weight: 700; }
+
+    /* View toggle (month/week) */
+    .view-toggle {
+      display: flex;
+      background: white;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+    .view-toggle-btn {
+      flex: 1;
+      padding: 9px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .view-toggle-btn.active { background: var(--primary-light); color: var(--primary); }
+
+    /* Weekly breakdown */
+    .week-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 6px;
+    }
+    .week-title { font-size: 14px; font-weight: 700; }
+    .week-range { font-size: 11px; color: var(--text-muted); font-weight: 400; margin-left: 4px; }
+    .week-totals { display: flex; gap: 10px; font-size: 13px; font-weight: 700; }
+
+    /* Summary cards */
+    .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .summary-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 14px;
+      text-align: center;
+    }
+    .summary-card.full { grid-column: 1 / -1; }
+    .summary-card .s-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+    .summary-card .s-amount { font-size: 22px; font-weight: 800; }
+    .s-income { color: var(--income); }
+    .s-expense { color: var(--expense); }
+    .s-balance { color: var(--primary); }
+
+    /* Transaction list in summary */
+    .tx-group { margin-bottom: 4px; }
+    .tx-group-header {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 6px 0 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .tx-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .tx-item:last-child { border-bottom: none; }
+    .tx-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .tx-info { flex: 1; min-width: 0; }
+    .tx-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tx-date { font-size: 11px; color: var(--text-muted); }
+    .tx-amount { font-size: 14px; font-weight: 700; flex-shrink: 0; }
+    .tx-fixed-badge {
+      font-size: 10px;
+      background: #E2E8F0;
+      color: var(--text-muted);
+      padding: 1px 6px;
+      border-radius: 10px;
+      margin-left: 4px;
+    }
+
+    /* Category tab */
+    .cat-bar-item { margin-bottom: 14px; }
+    .cat-bar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+    .cat-bar-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .cat-bar-pct { font-size: 12px; color: var(--text-muted); }
+    .cat-bar-amount { font-size: 13px; font-weight: 700; color: var(--expense); }
+    .bar-track {
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.4s ease;
+    }
+
+    /* Settings tab */
+    .settings-section { margin-bottom: 20px; }
+    .settings-section-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .fixed-list { margin-bottom: 12px; }
+    .fixed-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .fixed-item:last-child { border-bottom: none; }
+    .fixed-info { flex: 1; min-width: 0; }
+    .fixed-name { font-size: 14px; font-weight: 500; }
+    .fixed-cat { font-size: 11px; color: var(--text-muted); }
+    .fixed-amount { font-size: 15px; font-weight: 700; color: var(--expense); flex-shrink: 0; }
+    .btn-delete {
+      background: none;
+      border: none;
+      color: #CBD5E0;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px;
+      transition: color 0.15s;
+      flex-shrink: 0;
+    }
+    .btn-delete:hover { color: var(--expense); }
+
+    .inline-form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
+      background: var(--bg);
+      border-radius: 10px;
+      margin-top: 8px;
+    }
+    .inline-form-row { display: flex; gap: 8px; }
+    .inline-form-row .form-input { font-size: 14px; padding: 9px 12px; }
+    .inline-form-row .amount-input-wrap .form-input { padding-left: 26px; }
+    .inline-form-row .currency { font-size: 14px; }
+
+    .btn-add {
+      padding: 10px 16px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .btn-add:hover { opacity: 0.9; }
+
+    .income-setting {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #2D3748;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 999;
+      transition: transform 0.3s ease;
+      white-space: nowrap;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 200;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: white;
+      width: 100%;
+      max-width: 480px;
+      border-radius: 16px 16px 0 0;
+      padding: 20px;
+      animation: modal-up 0.2s ease;
+    }
+    @keyframes modal-up {
+      from { transform: translateY(100%); }
+      to   { transform: translateY(0); }
+    }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 4px; }
+    .modal-actions .btn-primary { flex: 1; }
+    .btn-secondary {
+      flex: 1;
+      padding: 14px;
+      background: var(--bg);
+      color: var(--text-muted);
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-secondary:hover { background: var(--border); }
+
+    /* Edit/delete controls on tx items */
+    .tx-actions { display: flex; gap: 2px; flex-shrink: 0; }
+    .tx-action-btn {
+      background: none;
+      border: none;
+      color: #CBD5E0;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 4px 6px;
+      transition: color 0.15s;
+    }
+    .tx-action-btn:hover { color: var(--primary); }
+    .tx-action-btn.tx-del:hover { color: var(--expense); }
+
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 32px 20px;
+      color: var(--text-muted);
+    }
+    .empty .empty-icon { font-size: 40px; margin-bottom: 10px; }
+    .empty p { font-size: 14px; }
+
+    /* Delete tx button */
+    .btn-tx-delete {
+      background: none;
+      border: none;
+      color: #CBD5E0;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 4px;
+      transition: color 0.15s;
+      flex-shrink: 0;
+    }
+    .btn-tx-delete:hover { color: var(--expense); }
+
+    select.form-input {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23718096' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+    }
+
+    /* Budget settings */
+    .budget-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .budget-row:last-child { border-bottom: none; }
+    .budget-cat-label {
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .budget-input-wrap { position: relative; width: 130px; }
+    .budget-input-wrap .currency {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .budget-input {
+      width: 100%;
+      padding: 8px 10px 8px 22px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--text);
+      background: white;
+      outline: none;
+      font-family: inherit;
+    }
+    .budget-input:focus { border-color: var(--primary); }
+
+    /* Budget badge in category tab */
+    .budget-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 10px;
+    }
+    .budget-ok   { background: #F0FFF4; color: var(--income); }
+    .budget-over { background: #FFF5F5; color: var(--expense); }
+    .budget-label { font-size: 12px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-row">
+    <h1>💰 家計簿</h1>
+    <button class="logout-btn" onclick="logout()">ログアウト</button>
+  </div>
+  <div class="subtitle" id="header-month"></div>
+</div>
+
+<nav class="tab-nav">
+  <button class="tab-btn active" onclick="switchTab('input')" id="tab-input">
+    <span class="tab-icon">✏️</span>入力
+  </button>
+  <button class="tab-btn" onclick="switchTab('summary')" id="tab-summary">
+    <span class="tab-icon">📊</span>月次確認
+  </button>
+  <button class="tab-btn" onclick="switchTab('category')" id="tab-category">
+    <span class="tab-icon">🗂️</span>カテゴリ
+  </button>
+  <button class="tab-btn" onclick="switchTab('settings')" id="tab-settings">
+    <span class="tab-icon">⚙️</span>設定
+  </button>
+</nav>
+
+<div class="content" id="main-content"></div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="edit-modal" onclick="if(event.target===this)closeEditModal()">
+  <div class="modal">
+    <div class="modal-title">記録を編集</div>
+    <div class="form-group">
+      <label class="form-label">名前</label>
+      <input class="form-input" id="edit-name" type="text" maxlength="30">
+    </div>
+    <div class="form-group">
+      <label class="form-label">金額</label>
+      <div class="amount-input-wrap">
+        <span class="currency">¥</span>
+        <input class="form-input" id="edit-amount" type="number" min="1" inputmode="numeric">
+      </div>
+    </div>
+    <div class="form-group" id="edit-cat-group">
+      <label class="form-label">カテゴリ</label>
+      <select class="form-input" id="edit-category"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">日付</label>
+      <input class="form-input" id="edit-date" type="date">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeEditModal()">キャンセル</button>
+      <button class="btn-primary" onclick="saveEditedTransaction()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────
+const CATEGORIES = [
+  { id: 'food',          name: '食費',   icon: '🍱', color: '#FF6B6B' },
+  { id: 'daily',         name: '日用品', icon: '🏠', color: '#4ECDC4' },
+  { id: 'transport',     name: '交通費', icon: '🚃', color: '#45B7D1' },
+  { id: 'utility',       name: '光熱費', icon: '💡', color: '#96CEB4' },
+  { id: 'entertainment', name: '娯楽',   icon: '🎮', color: '#F7DC6F' },
+  { id: 'medical',       name: '医療',   icon: '💊', color: '#DDA0DD' },
+  { id: 'clothing',      name: '衣類',   icon: '👔', color: '#98D8C8' },
+  { id: 'dining',        name: '外食',   icon: '🍜', color: '#FFA07A' },
+  { id: 'other',         name: 'その他', icon: '📦', color: '#BDC3C7' },
+];
+
+const CUSTOM_CAT_COLORS = ['#A29BFE', '#FD79A8', '#55EFC4', '#FAB1A0', '#74B9FF', '#FFEAA7', '#81ECEC'];
+
+function getAllCategories() {
+  return [
+    ...CATEGORIES.filter(c => !settings.hiddenCategories.includes(c.id)),
+    ...settings.customCategories,
+  ];
+}
+
+// ── State ──────────────────────────────────────────────────
+let currentTab = 'input';
+let viewMonth = toYearMonth(new Date());
+let summaryView = 'month'; // 'month' | 'week'
+let transactions = [];
+let settings = { monthlyIncome: 0, incomeName: '給与', fixedExpenses: [], categoryBudgets: {}, customCategories: [], hiddenCategories: [] };
+
+// Selected in input form
+let selectedType = 'expense';
+let selectedCategory = 'food';
+
+// ── Persistence ────────────────────────────────────────────
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, { credentials: 'include', ...options });
+  if (res.status === 401) {
+    window.location.href = '/login.html';
+    throw new Error('not authenticated');
+  }
+  return res;
+}
+
+async function loadData() {
+  try {
+    const res = await apiFetch('/api/data');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (Array.isArray(data.transactions)) transactions = data.transactions;
+    if (data.settings && typeof data.settings === 'object') {
+      settings = { ...settings, ...data.settings };
+    }
+  } catch(e) {}
+}
+
+let saveQueued = false;
+let saveInFlight = false;
+async function persist() {
+  if (saveInFlight) { saveQueued = true; return; }
+  saveInFlight = true;
+  try {
+    await apiFetch('/api/data', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactions, settings }),
+    });
+  } catch(e) {
+  } finally {
+    saveInFlight = false;
+    if (saveQueued) { saveQueued = false; persist(); }
+  }
+}
+function saveTransactions() { persist(); }
+function saveSettings() { persist(); }
+
+async function logout() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+  } catch(e) {}
+  window.location.href = '/login.html';
+}
+
+// ── Helpers ────────────────────────────────────────────────
+function toYearMonth(d) { return d.toISOString().slice(0, 7); }
+function formatYen(n) { return '¥' + Math.abs(n).toLocaleString(); }
+function formatMonth(ym) { const d = new Date(ym + '-01'); return `${d.getFullYear()}年${d.getMonth()+1}月`; }
+function today() { return new Date().toISOString().slice(0, 10); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function getCat(id) {
+  return getAllCategories().find(c => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function getMonthTransactions(month) {
+  return transactions.filter(tx => tx.date.startsWith(month));
+}
+
+function activeFixed(month) {
+  return settings.fixedExpenses.filter(f => !f.startMonth || f.startMonth <= month);
+}
+
+function getMonthTotals(month) {
+  const txs = getMonthTransactions(month);
+  const varExpense   = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const varIncome    = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const fixedList    = activeFixed(month);
+  const fixedTotal   = fixedList.reduce((s, f) => s + f.amount, 0);
+  const incomeActive = !settings.incomeStartMonth || settings.incomeStartMonth <= month;
+  const totalExpense = varExpense + fixedTotal;
+  const totalIncome  = (incomeActive ? settings.monthlyIncome : 0) + varIncome;
+  return { varExpense, varIncome, fixedTotal, fixedList, totalExpense, totalIncome, incomeActive, balance: totalIncome - totalExpense };
+}
+
+// ── Tab switching ──────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  render();
+}
+
+function updateHeader() {
+  const d = new Date(viewMonth + '-01');
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  document.getElementById('header-month').textContent = `${y}年${m}月`;
+}
+
+// ── Render dispatcher ──────────────────────────────────────
+function render() {
+  updateHeader();
+  const el = document.getElementById('main-content');
+  if (currentTab === 'input')    { el.innerHTML = renderInput(); bindInput(); }
+  if (currentTab === 'summary')  { el.innerHTML = renderSummary(); }
+  if (currentTab === 'category') { el.innerHTML = renderCategory(); }
+  if (currentTab === 'settings') { el.innerHTML = renderSettingsHTML(); bindSettings(); }
+}
+
+// ══════════════════════════════════════════════════════════
+// TAB: 入力
+// ══════════════════════════════════════════════════════════
+function renderInput() {
+  const recentTxs = [...transactions]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 8);
+
+  const catButtons = getAllCategories().map(c => `
+    <button class="cat-btn ${selectedCategory === c.id ? 'selected' : ''}"
+            id="cat-${c.id}" onclick="selectCategory('${c.id}')">
+      <span class="cat-icon">${c.icon}</span>
+      <span class="cat-name">${c.name}</span>
+    </button>
+  `).join('');
+
+  const recentList = recentTxs.length === 0
+    ? `<div class="empty"><div class="empty-icon">📋</div><p>まだ記録がありません</p></div>`
+    : recentTxs.map(tx => {
+        const cat = getCat(tx.category);
+        return `
+        <div class="recent-item">
+          <div class="recent-icon" style="background:${cat.color}22">${cat.icon}</div>
+          <div class="recent-info">
+            <div class="recent-name">${escHtml(tx.name)}</div>
+            <div class="recent-meta">${tx.date} · ${cat.name}</div>
+          </div>
+          <div class="recent-amount ${tx.type === 'expense' ? 'amount-expense' : 'amount-income'}">
+            ${tx.type === 'expense' ? '-' : '+'}${formatYen(tx.amount)}
+          </div>
+          <button class="btn-tx-delete" onclick="deleteTransaction('${tx.id}')" title="削除">×</button>
+        </div>`;
+      }).join('');
+
+  return `
+    <div class="card">
+      <div class="type-toggle">
+        <button class="type-btn ${selectedType === 'expense' ? 'active-expense' : ''}"
+                id="type-expense" onclick="selectType('expense')">💸 支出</button>
+        <button class="type-btn ${selectedType === 'income' ? 'active-income' : ''}"
+                id="type-income" onclick="selectType('income')">💰 収入</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="form-group">
+        <label class="form-label">名前</label>
+        <input class="form-input" id="inp-name" type="text" placeholder="例：スーパーで買い物"
+               maxlength="30" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">金額</label>
+        <div class="amount-input-wrap">
+          <span class="currency">¥</span>
+          <input class="form-input" id="inp-amount" type="number" placeholder="0"
+                 min="1" inputmode="numeric">
+        </div>
+      </div>
+      <div class="form-group" id="cat-section">
+        <label class="form-label">カテゴリ${selectedType === 'income' ? '<span style="font-weight:400;color:var(--text-muted)">（選んだカテゴリの予算が増額されます）</span>' : ''}</label>
+        <div class="cat-grid">${catButtons}</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">日付</label>
+        <input class="form-input" id="inp-date" type="date" value="${today()}">
+      </div>
+      <button class="btn-primary" onclick="submitTransaction()">
+        ${selectedType === 'expense' ? '支出を記録する' : '収入を記録する'}
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="recent-header">
+        <span class="recent-title">最近の記録</span>
+      </div>
+      ${recentList}
+    </div>
+  `;
+}
+
+function bindInput() {
+  const nameEl = document.getElementById('inp-name');
+  if (nameEl) nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('inp-amount').focus(); });
+}
+
+function selectType(type) {
+  selectedType = type;
+  render();
+}
+
+function selectCategory(id) {
+  selectedCategory = id;
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('selected'));
+  const el = document.getElementById('cat-' + id);
+  if (el) el.classList.add('selected');
+}
+
+function submitTransaction() {
+  const name   = document.getElementById('inp-name').value.trim();
+  const amount = parseInt(document.getElementById('inp-amount').value);
+  const date   = document.getElementById('inp-date').value;
+
+  if (!name)       { showToast('名前を入力してください'); return; }
+  if (!amount || amount <= 0) { showToast('金額を入力してください'); return; }
+  if (!date)       { showToast('日付を選択してください'); return; }
+
+  const tx = {
+    id: uid(),
+    name,
+    amount,
+    date,
+    category: selectedCategory,
+    type: selectedType,
+  };
+  transactions.unshift(tx);
+  saveTransactions();
+  showToast(selectedType === 'expense' ? `${formatYen(amount)}を記録しました` : `収入 ${formatYen(amount)}を記録しました`);
+  render();
+}
+
+function deleteTransaction(id) {
+  if (!confirm('この記録を削除しますか？')) return;
+  transactions = transactions.filter(t => t.id !== id);
+  saveTransactions();
+  showToast('削除しました');
+  render();
+}
+
+// ── Edit modal ─────────────────────────────────────────────
+let editingTxId = null;
+
+function openEditModal(id) {
+  const tx = transactions.find(t => t.id === id);
+  if (!tx) return;
+  editingTxId = id;
+
+  document.getElementById('edit-name').value = tx.name;
+  document.getElementById('edit-amount').value = tx.amount;
+  document.getElementById('edit-date').value = tx.date;
+
+  const catSelect = document.getElementById('edit-category');
+  catSelect.innerHTML = getAllCategories().map(c =>
+    `<option value="${c.id}" ${c.id === tx.category ? 'selected' : ''}>${c.icon} ${c.name}</option>`
+  ).join('');
+
+  document.getElementById('edit-modal').classList.add('show');
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.remove('show');
+  editingTxId = null;
+}
+
+function saveEditedTransaction() {
+  const tx = transactions.find(t => t.id === editingTxId);
+  if (!tx) return;
+
+  const name   = document.getElementById('edit-name').value.trim();
+  const amount = parseInt(document.getElementById('edit-amount').value);
+  const date   = document.getElementById('edit-date').value;
+
+  if (!name)       { showToast('名前を入力してください'); return; }
+  if (!amount || amount <= 0) { showToast('金額を入力してください'); return; }
+  if (!date)       { showToast('日付を選択してください'); return; }
+
+  tx.name     = name;
+  tx.amount   = amount;
+  tx.date     = date;
+  tx.category = document.getElementById('edit-category').value;
+
+  saveTransactions();
+  closeEditModal();
+  showToast('更新しました');
+  render();
+}
+
+// ══════════════════════════════════════════════════════════
+// TAB: 月次確認
+// ══════════════════════════════════════════════════════════
+function renderSummary() {
+  const { totalIncome, totalExpense, balance, fixedTotal, fixedList, varExpense, incomeActive } = getMonthTotals(viewMonth);
+  const txs = getMonthTransactions(viewMonth).sort((a, b) => b.date.localeCompare(a.date));
+  const expenses = txs.filter(t => t.type === 'expense');
+  const incomes  = txs.filter(t => t.type === 'income');
+
+  const balanceColor = balance >= 0 ? 's-income' : 's-expense';
+  const balanceSign  = balance >= 0 ? '+' : '-';
+
+  const fixedItems = fixedList.map(f => {
+    const cat = getCat(f.category);
+    const since = f.startMonth ? formatMonth(f.startMonth) + 'から' : '毎月自動';
+    return `
+      <div class="tx-item">
+        <div class="tx-icon" style="background:${cat.color}22">${cat.icon}</div>
+        <div class="tx-info">
+          <div class="tx-name">${escHtml(f.name)}<span class="tx-fixed-badge">固定</span></div>
+          <div class="tx-date">${since}</div>
+        </div>
+        <div class="tx-amount amount-expense">-${formatYen(f.amount)}</div>
+      </div>`;
+  }).join('');
+
+  const expenseItems = expenses.map(tx => {
+    const cat = getCat(tx.category);
+    return `
+      <div class="tx-item">
+        <div class="tx-icon" style="background:${cat.color}22">${cat.icon}</div>
+        <div class="tx-info">
+          <div class="tx-name">${escHtml(tx.name)}</div>
+          <div class="tx-date">${tx.date}</div>
+        </div>
+        <div class="tx-amount amount-expense">-${formatYen(tx.amount)}</div>
+        <div class="tx-actions">
+          <button class="tx-action-btn tx-edit" onclick="openEditModal('${tx.id}')" title="編集">✎</button>
+          <button class="tx-action-btn tx-del" onclick="deleteTransaction('${tx.id}')" title="削除">×</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  const incomeSince = settings.incomeStartMonth ? formatMonth(settings.incomeStartMonth) + 'から' : '毎月自動';
+  const incomeSettingItem = settings.monthlyIncome > 0 && incomeActive ? `
+    <div class="tx-item">
+      <div class="tx-icon" style="background:#38A16922">💼</div>
+      <div class="tx-info">
+        <div class="tx-name">${escHtml(settings.incomeName)}<span class="tx-fixed-badge">設定</span></div>
+        <div class="tx-date">${incomeSince}</div>
+      </div>
+      <div class="tx-amount amount-income">+${formatYen(settings.monthlyIncome)}</div>
+    </div>` : '';
+
+  const incomeItems = incomes.map(tx => {
+    const cat = getCat(tx.category);
+    return `
+    <div class="tx-item">
+      <div class="tx-icon" style="background:${cat.color}22">${cat.icon}</div>
+      <div class="tx-info">
+        <div class="tx-name">${escHtml(tx.name)}</div>
+        <div class="tx-date">${tx.date} · ${cat.name}</div>
+      </div>
+      <div class="tx-amount amount-income">+${formatYen(tx.amount)}</div>
+      <div class="tx-actions">
+        <button class="tx-action-btn tx-edit" onclick="openEditModal('${tx.id}')" title="編集">✎</button>
+        <button class="tx-action-btn tx-del" onclick="deleteTransaction('${tx.id}')" title="削除">×</button>
+      </div>
+    </div>
+  `;
+  }).join('');
+
+  const d = new Date(viewMonth + '-01');
+  const label = `${d.getFullYear()}年${d.getMonth()+1}月`;
+
+  return `
+    <div class="month-nav">
+      <button class="month-btn" onclick="changeMonth(-1)">◀</button>
+      <span class="month-label">${label}</span>
+      <button class="month-btn" onclick="changeMonth(1)">▶</button>
+    </div>
+
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="s-label">💰 収入合計</div>
+        <div class="s-amount s-income">${formatYen(totalIncome)}</div>
+      </div>
+      <div class="summary-card">
+        <div class="s-label">💸 支出合計</div>
+        <div class="s-amount s-expense">${formatYen(totalExpense)}</div>
+      </div>
+      <div class="summary-card full">
+        <div class="s-label">残高</div>
+        <div class="s-amount ${balanceColor}">${balanceSign}${formatYen(balance)}</div>
+      </div>
+    </div>
+
+    <div class="view-toggle">
+      <button class="view-toggle-btn ${summaryView === 'month' ? 'active' : ''}" onclick="setSummaryView('month')">📅 月別の内訳</button>
+      <button class="view-toggle-btn ${summaryView === 'week' ? 'active' : ''}" onclick="setSummaryView('week')">🗓️ 週別の内訳</button>
+    </div>
+
+    ${summaryView === 'week' ? renderWeeklyBreakdown() : `
+      <div class="card">
+        <div class="tx-group-header">
+          <span>💸 支出</span>
+          <span>${formatYen(totalExpense)}</span>
+        </div>
+        ${fixedTotal > 0 ? `
+          <div class="tx-group">
+            <div class="tx-group-header" style="font-size:11px;padding:4px 0 2px">
+              <span>固定費</span><span>${formatYen(fixedTotal)}</span>
+            </div>
+            ${fixedItems}
+          </div>` : ''}
+        ${expenses.length > 0 ? `
+          <div class="tx-group">
+            <div class="tx-group-header" style="font-size:11px;padding:4px 0 2px">
+              <span>変動費</span><span>${formatYen(varExpense)}</span>
+            </div>
+            ${expenseItems}
+          </div>` : ''}
+        ${fixedTotal === 0 && expenses.length === 0 ? `<div class="empty"><p>支出の記録がありません</p></div>` : ''}
+      </div>
+
+      <div class="card">
+        <div class="tx-group-header">
+          <span>💰 収入</span>
+          <span>${formatYen(totalIncome)}</span>
+        </div>
+        ${incomeSettingItem}
+        ${incomeItems}
+        ${totalIncome === 0 ? `<div class="empty"><p>収入の記録がありません</p></div>` : ''}
+      </div>
+    `}
+  `;
+}
+
+function setSummaryView(view) {
+  summaryView = view;
+  render();
+}
+
+function getWeekRanges(month) {
+  const [y, m] = month.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const ranges = [];
+  for (let start = 1; start <= lastDay; start += 7) {
+    ranges.push({ start, end: Math.min(start + 6, lastDay) });
+  }
+  return ranges;
+}
+
+function renderWeeklyBreakdown() {
+  const txs = getMonthTransactions(viewMonth);
+  const ranges = getWeekRanges(viewMonth);
+  const monthNum = parseInt(viewMonth.split('-')[1], 10);
+
+  return ranges.map((r, i) => {
+    const weekTxs = txs
+      .filter(t => { const day = parseInt(t.date.slice(8, 10), 10); return day >= r.start && day <= r.end; })
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    const wIncome  = weekTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const wExpense = weekTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+    const itemsHtml = weekTxs.length === 0
+      ? `<div class="empty" style="padding:18px"><p>この週の記録はありません</p></div>`
+      : weekTxs.map(tx => {
+          const cat = getCat(tx.category);
+          const isExpense = tx.type === 'expense';
+          return `
+            <div class="tx-item">
+              <div class="tx-icon" style="background:${cat.color}22">${cat.icon}</div>
+              <div class="tx-info">
+                <div class="tx-name">${escHtml(tx.name)}</div>
+                <div class="tx-date">${tx.date} · ${cat.name}</div>
+              </div>
+              <div class="tx-amount ${isExpense ? 'amount-expense' : 'amount-income'}">${isExpense ? '-' : '+'}${formatYen(tx.amount)}</div>
+              <div class="tx-actions">
+                <button class="tx-action-btn tx-edit" onclick="openEditModal('${tx.id}')" title="編集">✎</button>
+                <button class="tx-action-btn tx-del" onclick="deleteTransaction('${tx.id}')" title="削除">×</button>
+              </div>
+            </div>`;
+        }).join('');
+
+    return `
+      <div class="card">
+        <div class="week-header">
+          <span class="week-title">第${i + 1}週<span class="week-range">${monthNum}/${r.start} 〜 ${monthNum}/${r.end}</span></span>
+          <div class="week-totals">
+            <span class="amount-income">+${formatYen(wIncome)}</span>
+            <span class="amount-expense">-${formatYen(wExpense)}</span>
+          </div>
+        </div>
+        ${itemsHtml}
+      </div>`;
+  }).join('');
+}
+
+function changeMonth(delta) {
+  const d = new Date(viewMonth + '-01');
+  d.setMonth(d.getMonth() + delta);
+  viewMonth = toYearMonth(d);
+  render();
+}
+
+// ══════════════════════════════════════════════════════════
+// TAB: カテゴリ別
+// ══════════════════════════════════════════════════════════
+function renderCategory() {
+  const txs = getMonthTransactions(viewMonth);
+  const fixedExpenses = activeFixed(viewMonth);
+
+  // Aggregate: variable + fixed per category
+  const catTotals = {};
+  txs.filter(t => t.type === 'expense').forEach(t => {
+    catTotals[t.category] = (catTotals[t.category] || 0) + t.amount;
+  });
+  fixedExpenses.forEach(f => {
+    catTotals[f.category] = (catTotals[f.category] || 0) + f.amount;
+  });
+
+  const total = Object.values(catTotals).reduce((s, v) => s + v, 0);
+
+  const sorted = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
+
+  const d = new Date(viewMonth + '-01');
+  const label = `${d.getFullYear()}年${d.getMonth()+1}月`;
+
+  const bars = sorted.length === 0
+    ? `<div class="empty"><div class="empty-icon">📊</div><p>支出の記録がありません</p></div>`
+    : sorted.map(([catId, amount]) => {
+        const cat = getCat(catId);
+        const baseBudget  = settings.categoryBudgets[catId] || 0;
+        const incomeBoost = txs.filter(t => t.type === 'income' && t.category === catId)
+                               .reduce((s, t) => s + t.amount, 0);
+        const budget = baseBudget + incomeBoost;
+
+        let barPct, rightHtml, barColor;
+        if (budget > 0) {
+          const usedPct = amount / budget * 100;
+          const isOver  = amount > budget;
+          barPct    = Math.min(Math.round(usedPct), 100);
+          barColor  = isOver ? 'var(--expense)' : cat.color;
+          const diff = Math.abs(budget - amount);
+          const badge = isOver
+            ? `<span class="budget-badge budget-over">¥${diff.toLocaleString()}超過</span>`
+            : `<span class="budget-badge budget-ok">あと¥${diff.toLocaleString()}</span>`;
+          const boostNote = incomeBoost > 0
+            ? ` <span style="color:var(--income)">(収入+${formatYen(incomeBoost)})</span>`
+            : '';
+          rightHtml = `
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+              ${badge}
+              <span class="budget-label">${formatYen(amount)} / ${formatYen(budget)}${boostNote}</span>
+            </div>`;
+        } else {
+          const pct = total > 0 ? Math.round(amount / total * 100) : 0;
+          barPct    = pct;
+          barColor  = cat.color;
+          rightHtml = `
+            <div style="display:flex;gap:10px;align-items:center">
+              <span class="cat-bar-pct">${pct}%</span>
+              <span class="cat-bar-amount">${formatYen(amount)}</span>
+            </div>`;
+        }
+
+        return `
+          <div class="cat-bar-item">
+            <div class="cat-bar-header">
+              <span class="cat-bar-label">
+                <span>${cat.icon}</span>
+                <span>${cat.name}</span>
+              </span>
+              ${rightHtml}
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:${barPct}%;background:${barColor}"></div>
+            </div>
+          </div>`;
+      }).join('');
+
+  return `
+    <div class="month-nav">
+      <button class="month-btn" onclick="changeMonth(-1)">◀</button>
+      <span class="month-label">${label}</span>
+      <button class="month-btn" onclick="changeMonth(1)">▶</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">支出合計 ${total > 0 ? formatYen(total) : '—'}</div>
+      ${bars}
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════════════════
+// TAB: 設定
+// ══════════════════════════════════════════════════════════
+function renderSettingsHTML() {
+  const fixedList = settings.fixedExpenses.length === 0
+    ? `<div class="empty" style="padding:12px"><p>固定費がまだ登録されていません</p></div>`
+    : settings.fixedExpenses.map(f => {
+        const cat = getCat(f.category);
+        return `
+          <div class="fixed-item">
+            <div class="fixed-info">
+              <div class="fixed-name">${cat.icon} ${escHtml(f.name)}</div>
+              <div class="fixed-cat">${cat.name}${f.startMonth ? ' · ' + formatMonth(f.startMonth) + '〜' : ''}</div>
+            </div>
+            <div class="fixed-amount">${formatYen(f.amount)}/月</div>
+            <button class="btn-delete" onclick="deleteFixedExpense('${f.id}')">×</button>
+          </div>`;
+      }).join('');
+
+  const catOptions = getAllCategories().map(c =>
+    `<option value="${c.id}">${c.icon} ${c.name}</option>`
+  ).join('');
+
+  const allCats = getAllCategories();
+  const catManageList = allCats.map(c => {
+    const isDefault = CATEGORIES.some(dc => dc.id === c.id);
+    return `
+      <div class="fixed-item">
+        <div class="fixed-info">
+          <div class="fixed-name">${c.icon} ${escHtml(c.name)}</div>
+          ${isDefault ? '<div class="fixed-cat">標準カテゴリ</div>' : ''}
+        </div>
+        ${c.id === 'other' ? '' : `<button class="btn-delete" onclick="deleteCategory('${c.id}')">×</button>`}
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="settings-section">
+      <div class="settings-section-title">💼 月の収入設定</div>
+      <div class="card income-setting">
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">収入名</label>
+          <input class="form-input" id="set-income-name" type="text"
+                 value="${escHtml(settings.incomeName)}" placeholder="例：給与" maxlength="20">
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label class="form-label">毎月の収入</label>
+          <div class="amount-input-wrap">
+            <span class="currency">¥</span>
+            <input class="form-input" id="set-income-amount" type="number"
+                   value="${settings.monthlyIncome || ''}" placeholder="0" min="0" inputmode="numeric">
+          </div>
+        </div>
+        <button class="btn-primary" onclick="saveIncomeSettings()">収入を保存</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">🏷️ カテゴリの管理</div>
+      <div class="card">
+        <div class="fixed-list">${catManageList}</div>
+        <div class="inline-form">
+          <div class="inline-form-row">
+            <input class="form-input" id="new-cat-icon" type="text"
+                   placeholder="絵文字" maxlength="2" style="flex:0 0 64px;text-align:center;font-size:18px;padding:9px 6px">
+            <input class="form-input" id="new-cat-name" type="text"
+                   placeholder="カテゴリ名（例：旅行）" maxlength="12" style="flex:1;font-size:14px;padding:9px 12px">
+          </div>
+          <button class="btn-add" onclick="addCustomCategory()">＋ カテゴリを追加</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">🎯 カテゴリ別月予算</div>
+      <div class="card">
+        ${getAllCategories().map(c => {
+          const val = settings.categoryBudgets[c.id] || '';
+          return `
+            <div class="budget-row">
+              <span class="budget-cat-label">${c.icon} ${c.name}</span>
+              <div class="budget-input-wrap">
+                <span class="currency">¥</span>
+                <input class="budget-input" id="budget-${c.id}" type="number"
+                       value="${val}" placeholder="未設定" min="0" inputmode="numeric">
+              </div>
+            </div>`;
+        }).join('')}
+        <div style="margin-top:14px">
+          <button class="btn-primary" onclick="saveCategoryBudgets()">予算を保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">🔒 固定費の設定</div>
+      <div class="card">
+        <div class="fixed-list">${fixedList}</div>
+        <div class="inline-form">
+          <div class="form-group" style="margin-bottom:6px">
+            <label class="form-label" style="font-size:12px">名前</label>
+            <input class="form-input" id="new-fixed-name" type="text"
+                   placeholder="例：家賃、Netflix" maxlength="30" style="font-size:14px;padding:9px 12px">
+          </div>
+          <div class="inline-form-row">
+            <div class="amount-input-wrap" style="flex:1">
+              <span class="currency">¥</span>
+              <input class="form-input" id="new-fixed-amount" type="number"
+                     placeholder="金額" min="1" inputmode="numeric">
+            </div>
+            <select class="form-input" id="new-fixed-cat" style="flex:1;font-size:13px;padding:9px 10px">
+              ${catOptions}
+            </select>
+          </div>
+          <button class="btn-add" onclick="addFixedExpense()">＋ 追加する</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function bindSettings() {}
+
+function saveCategoryBudgets() {
+  const budgets = {};
+  getAllCategories().forEach(c => {
+    const val = parseInt(document.getElementById('budget-' + c.id).value);
+    if (val > 0) budgets[c.id] = val;
+  });
+  settings.categoryBudgets = budgets;
+  saveSettings();
+  showToast('予算を保存しました');
+}
+
+function saveIncomeSettings() {
+  const name   = document.getElementById('set-income-name').value.trim();
+  const amount = parseInt(document.getElementById('set-income-amount').value) || 0;
+  settings.incomeName    = name || '給与';
+  settings.monthlyIncome = amount;
+  if (amount > 0 && !settings.incomeStartMonth) {
+    settings.incomeStartMonth = toYearMonth(new Date());
+  } else if (amount === 0) {
+    delete settings.incomeStartMonth;
+  }
+  saveSettings();
+  showToast('収入設定を保存しました');
+}
+
+function addCustomCategory() {
+  const icon = document.getElementById('new-cat-icon').value.trim();
+  const name = document.getElementById('new-cat-name').value.trim();
+
+  if (!name) { showToast('カテゴリ名を入力してください'); return; }
+  if (getAllCategories().some(c => c.name === name)) { showToast('同じ名前のカテゴリがあります'); return; }
+
+  const color = CUSTOM_CAT_COLORS[settings.customCategories.length % CUSTOM_CAT_COLORS.length];
+  settings.customCategories.push({ id: 'custom_' + uid(), name, icon: icon || '🏷️', color });
+  saveSettings();
+  showToast(`${escHtml(name)} を追加しました`);
+  render();
+}
+
+function deleteCategory(id) {
+  if (id === 'other') return;
+  const cat = getCat(id);
+  if (!confirm(`「${cat.name}」を削除しますか？\n（このカテゴリで記録済みの項目は「その他」として扱われます）`)) return;
+
+  if (settings.customCategories.some(c => c.id === id)) {
+    settings.customCategories = settings.customCategories.filter(c => c.id !== id);
+  } else if (!settings.hiddenCategories.includes(id)) {
+    settings.hiddenCategories.push(id);
+  }
+  delete settings.categoryBudgets[id];
+  saveSettings();
+  showToast('削除しました');
+  render();
+}
+
+function addFixedExpense() {
+  const name   = document.getElementById('new-fixed-name').value.trim();
+  const amount = parseInt(document.getElementById('new-fixed-amount').value);
+  const cat    = document.getElementById('new-fixed-cat').value;
+
+  if (!name)       { showToast('名前を入力してください'); return; }
+  if (!amount || amount <= 0) { showToast('金額を入力してください'); return; }
+
+  settings.fixedExpenses.push({ id: uid(), name, amount, category: cat, startMonth: toYearMonth(new Date()) });
+  saveSettings();
+  showToast(`${escHtml(name)} を追加しました`);
+  render();
+}
+
+function deleteFixedExpense(id) {
+  if (!confirm('この固定費を削除しますか？')) return;
+  settings.fixedExpenses = settings.fixedExpenses.filter(f => f.id !== id);
+  saveSettings();
+  showToast('削除しました');
+  render();
+}
+
+// ── Utils ──────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── Init ───────────────────────────────────────────────────
+(async function init() {
+  await loadData();
+  render();
+})();
+</script>
+</body>
+</html>

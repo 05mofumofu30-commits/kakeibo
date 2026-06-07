@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>家計簿 - ログイン</title>
+  <style>
+    :root {
+      --primary: #5C6BC0;
+      --primary-light: #E8EAF6;
+      --bg: #F5F6FA;
+      --card: #FFFFFF;
+      --text: #2D3748;
+      --text-muted: #718096;
+      --expense: #E53E3E;
+      --border: #E2E8F0;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .wrap { width: 100%; max-width: 360px; }
+    .logo { text-align: center; margin-bottom: 24px; }
+    .logo h1 { font-size: 24px; font-weight: 800; color: var(--primary); }
+    .logo p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px 20px;
+    }
+    .mode-toggle {
+      display: flex;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .mode-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .mode-btn.active { background: var(--primary-light); color: var(--primary); }
+
+    .form-group { margin-bottom: 14px; }
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .form-input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-size: 16px;
+      color: var(--text);
+      background: white;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: inherit;
+    }
+    .form-input:focus { border-color: var(--primary); }
+    .form-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      font-family: inherit;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:disabled { opacity: 0.6; cursor: default; }
+
+    .error-box {
+      display: none;
+      background: #FFF5F5;
+      color: var(--expense);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 14px;
+    }
+    .error-box.show { display: block; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">
+      <h1>💰 家計簿</h1>
+      <p>金額・名前・カテゴリだけのシンプル家計簿</p>
+    </div>
+
+    <div class="card">
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="mode-login" onclick="setMode('login')">ログイン</button>
+        <button class="mode-btn" id="mode-register" onclick="setMode('register')">新規登録</button>
+      </div>
+
+      <div class="error-box" id="error-box"></div>
+
+      <form id="auth-form">
+        <div class="form-group">
+          <label class="form-label">メールアドレス</label>
+          <input class="form-input" id="email" type="email" placeholder="you@example.com" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label class="form-label">パスワード</label>
+          <input class="form-input" id="password" type="password" placeholder="8文字以上" required minlength="8" autocomplete="current-password">
+          <div class="form-hint" id="password-hint" style="display:none">登録には8文字以上のパスワードが必要です</div>
+        </div>
+        <button class="btn-primary" type="submit" id="submit-btn">ログイン</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let mode = 'login';
+
+    function setMode(m) {
+      mode = m;
+      document.getElementById('mode-login').classList.toggle('active', m === 'login');
+      document.getElementById('mode-register').classList.toggle('active', m === 'register');
+      document.getElementById('submit-btn').textContent = m === 'login' ? 'ログイン' : 'アカウントを作成';
+      document.getElementById('password').autocomplete = m === 'login' ? 'current-password' : 'new-password';
+      document.getElementById('password-hint').style.display = m === 'register' ? 'block' : 'none';
+      hideError();
+    }
+
+    function showError(msg) {
+      const box = document.getElementById('error-box');
+      box.textContent = msg;
+      box.classList.add('show');
+    }
+    function hideError() {
+      document.getElementById('error-box').classList.remove('show');
+    }
+
+    document.getElementById('auth-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError();
+
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const submitBtn = document.getElementById('submit-btn');
+
+      if (mode === 'register' && password.length < 8) {
+        showError('パスワードは8文字以上で入力してください');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error || 'エラーが発生しました');
+          submitBtn.disabled = false;
+          return;
+        }
+
+        window.location.href = '/';
+      } catch (err) {
+        showError('通信エラーが発生しました。しばらくしてから再度お試しください');
+        submitBtn.disabled = false;
+      }
+    });
+
+    // Already logged in? skip straight to the app.
+    fetch('/api/me', { credentials: 'include' }).then(res => {
+      if (res.ok) window.location.href = '/';
+    });
+  </script>
+</body>
+</html>
