@@ -778,19 +778,52 @@ function getClosingSettingsFor(month) {
   return result || { closingType: settings.closingType, paydayDay: settings.paydayDay };
 }
 
+// 月ラベル(YYYY-MM)の前月のラベルを返す（文字列計算のみで、タイムゾーンの影響を受けない）
+function getPrevMonthLabel(month) {
+  const [y, m] = month.split('-').map(Number);
+  const py = m === 1 ? y - 1 : y;
+  const pm = m === 1 ? 12 : m - 1;
+  return `${py}-${String(pm).padStart(2, '0')}`;
+}
+
+// 締め日設定にもとづき、その月の「終了日」を返す
+function computePeriodEnd(y, m, cfg) {
+  if (cfg.closingType === 'payday' && cfg.paydayDay) {
+    return new Date(y, m - 1, cfg.paydayDay);
+  }
+  return new Date(y, m, 0);
+}
+// 締め日設定にもとづき、その月の「開始日」を返す（切り替わりの前後を考慮しない単純計算）
+function computePeriodStart(y, m, cfg) {
+  if (cfg.closingType === 'payday' && cfg.paydayDay) {
+    return new Date(y, m - 2, cfg.paydayDay + 1);
+  }
+  return new Date(y, m - 1, 1);
+}
+
 // 月ラベル(YYYY-MM)が表す実際の期間（開始日〜終了日）を返す
 // 給料日締めの場合: 「YYYY-MM」は前月(締め日+1日)〜当月(締め日)を表す
+//
+// 締め日の設定を変更した月（切り替わりの月）は、単純計算だと前月の期間と
+// 重複したり隙間が空いたりする（例: 20日締め→19日締めに変えると20日のデータが
+// 前月・当月の両方に含まれてしまう）。これを防ぐため、切り替わりの月だけは
+// 開始日を「前月の期間の終了日の翌日」とし、終了日のみ新しい設定で計算する。
 function getPeriodRange(month) {
   const [y, m] = month.split('-').map(Number);
-  const { closingType, paydayDay } = getClosingSettingsFor(month);
-  if (closingType === 'payday' && paydayDay) {
-    const D = paydayDay;
-    const endDate   = new Date(y, m - 1, D);
-    const startDate = new Date(y, m - 2, D + 1);
-    return { start: toISODate(startDate), end: toISODate(endDate) };
+  const cur = getClosingSettingsFor(month);
+  const endDate = computePeriodEnd(y, m, cur);
+
+  const prevLabel = getPrevMonthLabel(month);
+  const prev = getClosingSettingsFor(prevLabel);
+
+  let startDate;
+  if (cur.closingType !== prev.closingType || cur.paydayDay !== prev.paydayDay) {
+    const prevRange = getPeriodRange(prevLabel);
+    startDate = new Date(prevRange.end + 'T00:00:00');
+    startDate.setDate(startDate.getDate() + 1);
+  } else {
+    startDate = computePeriodStart(y, m, cur);
   }
-  const startDate = new Date(y, m - 1, 1);
-  const endDate   = new Date(y, m, 0);
   return { start: toISODate(startDate), end: toISODate(endDate) };
 }
 
@@ -833,16 +866,23 @@ function getMonthTotals(month) {
   return { varExpense, varIncome, fixedTotal, fixedList, totalExpense, totalIncome, incomeActive, balance: totalIncome - totalExpense };
 }
 
-// 指定した年(YYYY)の12期間ぶんを合算した年間収支を返す
+// 指定した年(YYYY)の年間収支を返す
+// まだ終わっていない期間（＝まだ受け取っていない収入を含む可能性がある月）は
+// 集計に含めない（年初〜直近で締まった月までの実績ベースで合算する）
 function getYearTotals(year) {
+  const todayStr = toISODate(new Date());
   let totalIncome = 0, totalExpense = 0;
+  let lastIncludedMonth = null;
   for (let m = 1; m <= 12; m++) {
     const ym = `${year}-${String(m).padStart(2, '0')}`;
+    const { end } = getPeriodRange(ym);
+    if (end > todayStr) continue;
     const t = getMonthTotals(ym);
     totalIncome += t.totalIncome;
     totalExpense += t.totalExpense;
+    lastIncludedMonth = ym;
   }
-  return { totalIncome, totalExpense, balance: totalIncome - totalExpense };
+  return { totalIncome, totalExpense, balance: totalIncome - totalExpense, lastIncludedMonth };
 }
 
 // ── Tab switching ──────────────────────────────────────────
@@ -1126,6 +1166,11 @@ function renderSummary() {
   const yearTotals = getYearTotals(year);
   const yearBalanceColor = yearTotals.balance >= 0 ? 's-income' : 's-expense';
   const yearBalanceSign  = yearTotals.balance >= 0 ? '+' : '-';
+  const yearNote = yearTotals.lastIncludedMonth
+    ? (yearTotals.lastIncludedMonth === `${year}-12`
+        ? ''
+        : `${Number(yearTotals.lastIncludedMonth.split('-')[1])}月分まで集計（未確定の月は含みません）`)
+    : '集計対象の期間がまだありません';
 
   return `
     <div class="month-nav">
@@ -1151,6 +1196,7 @@ function renderSummary() {
 
     <div class="card">
       <div class="card-title">📈 ${year}年の年間収支</div>
+      ${yearNote ? `<p style="font-size:12px;color:var(--text-muted);margin:2px 0 0">${yearNote}</p>` : ''}
       <div class="summary-grid" style="margin-top:10px;margin-bottom:0">
         <div class="summary-card">
           <div class="s-label">💰 年間収入</div>
