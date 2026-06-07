@@ -687,7 +687,7 @@ let currentTab = 'input';
 let viewMonth = toYearMonth(new Date());
 let summaryView = 'month'; // 'month' | 'week'
 let transactions = [];
-let settings = { monthlyIncome: 0, incomeName: '給与', fixedExpenses: [], categoryBudgets: {}, customCategories: [], hiddenCategories: [], closingType: 'month_end', paydayDay: 25 };
+let settings = { monthlyIncome: 0, incomeName: '給与', fixedExpenses: [], categoryBudgets: {}, customCategories: [], hiddenCategories: [], closingType: 'month_end', paydayDay: 25, closingHistory: [] };
 
 // Selected in input form
 let selectedType = 'expense';
@@ -762,12 +762,29 @@ function formatMD(dateStr) {
   return `${m}/${d}`;
 }
 
+// 指定した月(YYYY-MM)時点で有効だった締め日設定を返す
+// 締め日を変更した場合、過去の月には変更前の設定を遡って適用しないよう履歴(closingHistory)から逆算する
+function getClosingSettingsFor(month) {
+  const history = settings.closingHistory;
+  if (!history || history.length === 0) {
+    return { closingType: settings.closingType, paydayDay: settings.paydayDay };
+  }
+  let result = null;
+  for (const entry of history) {
+    if (entry.effectiveFrom <= month && (!result || entry.effectiveFrom > result.effectiveFrom)) {
+      result = entry;
+    }
+  }
+  return result || { closingType: settings.closingType, paydayDay: settings.paydayDay };
+}
+
 // 月ラベル(YYYY-MM)が表す実際の期間（開始日〜終了日）を返す
 // 給料日締めの場合: 「YYYY-MM」は前月(締め日+1日)〜当月(締め日)を表す
 function getPeriodRange(month) {
   const [y, m] = month.split('-').map(Number);
-  if (settings.closingType === 'payday' && settings.paydayDay) {
-    const D = settings.paydayDay;
+  const { closingType, paydayDay } = getClosingSettingsFor(month);
+  if (closingType === 'payday' && paydayDay) {
+    const D = paydayDay;
     const endDate   = new Date(y, m - 1, D);
     const startDate = new Date(y, m - 2, D + 1);
     return { start: toISODate(startDate), end: toISODate(endDate) };
@@ -779,7 +796,7 @@ function getPeriodRange(month) {
 
 // 締め日基準のときに期間の実日付範囲をラベルとして返す（例: 5/26 〜 6/25）
 function formatPeriodRange(month) {
-  if (settings.closingType !== 'payday') return '';
+  if (getClosingSettingsFor(month).closingType !== 'payday') return '';
   const { start, end } = getPeriodRange(month);
   return `${formatMD(start)} 〜 ${formatMD(end)}`;
 }
@@ -1415,6 +1432,9 @@ function renderSettingsHTML() {
             例：25日締めの場合、「6月」は5/26〜6/25の収支として集計されます
           </p>
         </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
+          ※ 設定の変更は今月以降の集計に適用され、過去の月の集計には影響しません
+        </p>
         <button class="btn-primary" onclick="saveClosingSettings()">締め日を保存</button>
       </div>
     </div>
@@ -1513,10 +1533,25 @@ function onClosingTypeChange() {
 function saveClosingSettings() {
   const type = document.getElementById('set-closing-type').value;
   const day  = parseInt(document.getElementById('set-payday-day').value) || 25;
-  settings.closingType = type;
-  settings.paydayDay   = day;
+
+  // 設定を変更した場合、過去の月の集計には遡って適用しないよう、
+  // 「いつから」その設定が有効になるかを履歴(closingHistory)に記録する
+  if (type !== settings.closingType || day !== settings.paydayDay) {
+    const currentMonth = toYearMonth(new Date());
+    if (!settings.closingHistory) settings.closingHistory = [];
+    if (settings.closingHistory.length === 0) {
+      settings.closingHistory.push({ effectiveFrom: '0000-01', closingType: settings.closingType, paydayDay: settings.paydayDay });
+    }
+    const entry = { effectiveFrom: currentMonth, closingType: type, paydayDay: day };
+    const idx = settings.closingHistory.findIndex(e => e.effectiveFrom === currentMonth);
+    if (idx >= 0) settings.closingHistory[idx] = entry;
+    else settings.closingHistory.push(entry);
+
+    settings.closingType = type;
+    settings.paydayDay   = day;
+  }
   saveSettings();
-  showToast('締め日を保存しました');
+  showToast('締め日を保存しました（今月以降に適用されます）');
   render();
 }
 
