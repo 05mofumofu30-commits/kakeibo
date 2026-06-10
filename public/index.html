@@ -368,6 +368,14 @@
     }
     .cat-bar-pct { font-size: 12px; color: var(--text-muted); }
     .cat-bar-amount { font-size: 13px; font-weight: 700; color: var(--expense); }
+    .cat-bar-toggle { cursor: pointer; }
+    .cat-bar-arrow { font-size: 10px; color: var(--text-muted); width: 10px; display: inline-block; }
+    .cat-bar-detail {
+      margin-top: 8px;
+      padding: 4px 10px;
+      background: var(--bg);
+      border-radius: 8px;
+    }
     .bar-track {
       height: 8px;
       background: var(--border);
@@ -686,6 +694,7 @@ function getAllCategories() {
 let currentTab = 'input';
 let viewMonth = toYearMonth(new Date());
 let summaryView = 'month'; // 'month' | 'week'
+let expandedCategoryId = null;
 let transactions = [];
 let settings = { monthlyIncome: 0, incomeName: '給与', fixedExpenses: [], categoryBudgets: {}, customCategories: [], hiddenCategories: [], closingType: 'month_end', paydayDay: 25, closingHistory: [] };
 
@@ -1389,10 +1398,14 @@ function renderCategory() {
             </div>`;
         }
 
+        const isExpanded = expandedCategoryId === catId;
+        const detail = isExpanded ? renderCategoryDetail(catId, txs, fixedExpenses) : '';
+
         return `
           <div class="cat-bar-item">
-            <div class="cat-bar-header">
+            <div class="cat-bar-header cat-bar-toggle" onclick="toggleCategoryDetail('${catId}')">
               <span class="cat-bar-label">
+                <span class="cat-bar-arrow">${isExpanded ? '▼' : '▶'}</span>
                 <span>${cat.icon}</span>
                 <span>${cat.name}</span>
               </span>
@@ -1401,6 +1414,7 @@ function renderCategory() {
             <div class="bar-track">
               <div class="bar-fill" style="width:${barPct}%;background:${barColor}"></div>
             </div>
+            ${detail}
           </div>`;
       }).join('');
 
@@ -1416,6 +1430,46 @@ function renderCategory() {
       ${bars}
     </div>
   `;
+}
+
+function renderCategoryDetail(catId, txs, fixedExpenses) {
+  const fixedItems = fixedExpenses
+    .filter(f => f.category === catId)
+    .map(f => {
+      const since = f.startMonth ? formatMonth(f.startMonth) + 'から' : '毎月自動';
+      return `
+        <div class="tx-item">
+          <div class="tx-info">
+            <div class="tx-name">${escHtml(f.name)}<span class="tx-fixed-badge">固定</span></div>
+            <div class="tx-date">${since}</div>
+          </div>
+          <div class="tx-amount amount-expense">-${formatYen(f.amount)}</div>
+        </div>`;
+    }).join('');
+
+  const expenseItems = txs
+    .filter(t => t.type === 'expense' && t.category === catId)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(tx => `
+        <div class="tx-item">
+          <div class="tx-info">
+            <div class="tx-name">${escHtml(tx.name)}</div>
+            <div class="tx-date">${tx.date}</div>
+          </div>
+          <div class="tx-amount amount-expense">-${formatYen(tx.amount)}</div>
+          <div class="tx-actions">
+            <button class="tx-action-btn tx-edit" onclick="openEditModal('${tx.id}')" title="編集">✎</button>
+            <button class="tx-action-btn tx-del" onclick="deleteTransaction('${tx.id}')" title="削除">×</button>
+          </div>
+        </div>`).join('');
+
+  const items = fixedItems + expenseItems;
+  return `<div class="cat-bar-detail">${items || '<div class="empty" style="padding:8px"><p>内訳がありません</p></div>'}</div>`;
+}
+
+function toggleCategoryDetail(catId) {
+  expandedCategoryId = expandedCategoryId === catId ? null : catId;
+  render();
 }
 
 // ══════════════════════════════════════════════════════════
