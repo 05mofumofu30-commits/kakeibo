@@ -422,6 +422,18 @@
       flex-shrink: 0;
     }
     .btn-delete:hover { color: var(--expense); }
+    .cat-reorder { display: flex; flex-direction: column; flex-shrink: 0; }
+    .cat-reorder-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 10px;
+      line-height: 1.4;
+      cursor: pointer;
+      padding: 1px 4px;
+    }
+    .cat-reorder-btn:disabled { opacity: 0.25; cursor: default; }
+    .cat-reorder-btn:hover:not(:disabled) { color: var(--primary); }
 
     .inline-form {
       display: flex;
@@ -684,10 +696,22 @@ const CATEGORIES = [
 const CUSTOM_CAT_COLORS = ['#A29BFE', '#FD79A8', '#55EFC4', '#FAB1A0', '#74B9FF', '#FFEAA7', '#81ECEC'];
 
 function getAllCategories() {
-  return [
+  const base = [
     ...CATEGORIES.filter(c => !settings.hiddenCategories.includes(c.id)),
     ...settings.customCategories,
-  ];
+  ].map(c => {
+    const o = settings.categoryOverrides[c.id];
+    return o ? { ...c, ...o } : c;
+  });
+
+  const order = settings.categoryOrder || [];
+  return base.slice().sort((a, b) => {
+    let ai = order.indexOf(a.id);
+    let bi = order.indexOf(b.id);
+    if (ai === -1) ai = order.length + base.findIndex(c => c.id === a.id);
+    if (bi === -1) bi = order.length + base.findIndex(c => c.id === b.id);
+    return ai - bi;
+  });
 }
 
 // ── State ──────────────────────────────────────────────────
@@ -696,7 +720,8 @@ let viewMonth = toYearMonth(new Date());
 let summaryView = 'month'; // 'month' | 'week'
 let expandedCategoryId = null;
 let transactions = [];
-let settings = { monthlyIncome: 0, incomeName: '給与', fixedExpenses: [], categoryBudgets: {}, customCategories: [], hiddenCategories: [], closingType: 'month_end', paydayDay: 25, closingHistory: [] };
+let settings = { monthlyIncome: 0, incomeName: '給与', fixedExpenses: [], categoryBudgets: {}, customCategories: [], hiddenCategories: [], closingType: 'month_end', paydayDay: 25, closingHistory: [], categoryOrder: [], categoryOverrides: {} };
+let editingCategoryId = null;
 
 // Selected in input form
 let selectedType = 'expense';
@@ -1496,14 +1521,38 @@ function renderSettingsHTML() {
   ).join('');
 
   const allCats = getAllCategories();
-  const catManageList = allCats.map(c => {
+  const catManageList = allCats.map((c, idx) => {
     const isDefault = CATEGORIES.some(dc => dc.id === c.id);
+
+    if (editingCategoryId === c.id) {
+      return `
+        <div class="fixed-item">
+          <div class="inline-form" style="flex:1;margin-top:0">
+            <div class="inline-form-row">
+              <input class="form-input" id="edit-cat-icon" type="text"
+                     value="${escHtml(c.icon)}" maxlength="2" style="flex:0 0 64px;text-align:center;font-size:18px;padding:9px 6px">
+              <input class="form-input" id="edit-cat-name" type="text"
+                     value="${escHtml(c.name)}" maxlength="12" style="flex:1;font-size:14px;padding:9px 12px">
+            </div>
+            <div class="inline-form-row">
+              <button class="btn-secondary" style="flex:1" onclick="cancelEditCategory()">キャンセル</button>
+              <button class="btn-primary" style="flex:1" onclick="saveEditCategory('${c.id}')">保存</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
     return `
       <div class="fixed-item">
+        <div class="cat-reorder">
+          <button class="cat-reorder-btn" onclick="moveCategory('${c.id}', -1)" ${idx === 0 ? 'disabled' : ''} title="上へ">▲</button>
+          <button class="cat-reorder-btn" onclick="moveCategory('${c.id}', 1)" ${idx === allCats.length - 1 ? 'disabled' : ''} title="下へ">▼</button>
+        </div>
         <div class="fixed-info">
           <div class="fixed-name">${c.icon} ${escHtml(c.name)}</div>
           ${isDefault ? '<div class="fixed-cat">標準カテゴリ</div>' : ''}
         </div>
+        <button class="tx-action-btn tx-edit" onclick="startEditCategory('${c.id}')" title="編集">✎</button>
         ${c.id === 'other' ? '' : `<button class="btn-delete" onclick="deleteCategory('${c.id}')">×</button>`}
       </div>`;
   }).join('');
@@ -1705,8 +1754,55 @@ function deleteCategory(id) {
     settings.hiddenCategories.push(id);
   }
   delete settings.categoryBudgets[id];
+  delete settings.categoryOverrides[id];
+  settings.categoryOrder = settings.categoryOrder.filter(catId => catId !== id);
   saveSettings();
   showToast('削除しました');
+  render();
+}
+
+function startEditCategory(id) {
+  editingCategoryId = id;
+  render();
+}
+
+function cancelEditCategory() {
+  editingCategoryId = null;
+  render();
+}
+
+function saveEditCategory(id) {
+  const icon = document.getElementById('edit-cat-icon').value.trim();
+  const name = document.getElementById('edit-cat-name').value.trim();
+
+  if (!name) { showToast('カテゴリ名を入力してください'); return; }
+  if (getAllCategories().some(c => c.id !== id && c.name === name)) { showToast('同じ名前のカテゴリがあります'); return; }
+
+  const current = getCat(id);
+  const newIcon = icon || current.icon;
+
+  if (settings.customCategories.some(c => c.id === id)) {
+    const cat = settings.customCategories.find(c => c.id === id);
+    cat.name = name;
+    cat.icon = newIcon;
+  } else {
+    settings.categoryOverrides[id] = { name, icon: newIcon };
+  }
+
+  editingCategoryId = null;
+  saveSettings();
+  showToast('保存しました');
+  render();
+}
+
+function moveCategory(id, dir) {
+  const ids = getAllCategories().map(c => c.id);
+  const idx = ids.indexOf(id);
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= ids.length) return;
+  [ids[idx], ids[newIdx]] = [ids[newIdx], ids[idx]];
+  settings.categoryOrder = ids;
+  saveSettings();
   render();
 }
 
