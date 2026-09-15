@@ -494,6 +494,33 @@
     }
     .toast.show { transform: translateX(-50%) translateY(0); }
 
+    /* Load error banner */
+    .load-error-banner {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: #C53030;
+      color: white;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 1000;
+      text-align: center;
+    }
+    .load-error-banner.show { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+    .load-error-banner button {
+      background: white;
+      color: #C53030;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
     /* Modal */
     .modal-overlay {
       display: none;
@@ -657,6 +684,11 @@
 
 <div class="toast" id="toast"></div>
 
+<div class="load-error-banner" id="load-error-banner">
+  <span>データの読み込みに失敗しました。表示中の内容は保存されません。</span>
+  <button onclick="retryLoadData()">再読み込み</button>
+</div>
+
 <div class="modal-overlay" id="edit-modal" onclick="if(event.target===this)closeEditModal()">
   <div class="modal">
     <div class="modal-title">記録を編集</div>
@@ -744,21 +776,40 @@ async function apiFetch(url, options = {}) {
   return res;
 }
 
+let dataLoaded = false;
+
+function setLoadErrorVisible(visible) {
+  const el = document.getElementById('load-error-banner');
+  el.classList.toggle('show', visible);
+}
+
 async function loadData() {
   try {
     const res = await apiFetch('/api/data');
-    if (!res.ok) return;
+    if (!res.ok) { setLoadErrorVisible(true); return; }
     const data = await res.json();
     if (Array.isArray(data.transactions)) transactions = data.transactions;
     if (data.settings && typeof data.settings === 'object') {
       settings = { ...settings, ...data.settings };
     }
-  } catch(e) {}
+    dataLoaded = true;
+    setLoadErrorVisible(false);
+  } catch(e) {
+    setLoadErrorVisible(true);
+  }
+}
+
+async function retryLoadData() {
+  await loadData();
+  render();
 }
 
 let saveQueued = false;
 let saveInFlight = false;
 async function persist() {
+  // Guard against overwriting server data with a still-empty local state
+  // when the initial loadData() failed (e.g. Render cold-start timeout).
+  if (!dataLoaded) { setLoadErrorVisible(true); showToast('データ未読み込みのため保存できません'); return; }
   if (saveInFlight) { saveQueued = true; return; }
   saveInFlight = true;
   try {
