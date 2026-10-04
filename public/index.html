@@ -700,7 +700,7 @@
       <label class="form-label">金額</label>
       <div class="amount-input-wrap">
         <span class="currency">¥</span>
-        <input class="form-input" id="edit-amount" type="number" min="1" inputmode="numeric">
+        <input class="form-input" id="edit-amount" type="number" min="0" inputmode="numeric">
       </div>
     </div>
     <div class="form-group" id="edit-cat-group">
@@ -1057,7 +1057,7 @@ function renderInput() {
         <div class="amount-input-wrap">
           <span class="currency">¥</span>
           <input class="form-input" id="inp-amount" type="number" placeholder="0"
-                 min="1" inputmode="numeric">
+                 min="0" inputmode="numeric">
         </div>
       </div>
       <div class="form-group" id="cat-section">
@@ -1105,7 +1105,7 @@ function submitTransaction() {
   const date   = document.getElementById('inp-date').value;
 
   if (!name)       { showToast('名前を入力してください'); return; }
-  if (!amount || amount <= 0) { showToast('金額を入力してください'); return; }
+  if (isNaN(amount) || amount < 0) { showToast('金額を入力してください'); return; }
   if (!date)       { showToast('日付を選択してください'); return; }
 
   const tx = {
@@ -1164,7 +1164,7 @@ function saveEditedTransaction() {
   const date   = document.getElementById('edit-date').value;
 
   if (!name)       { showToast('名前を入力してください'); return; }
-  if (!amount || amount <= 0) { showToast('金額を入力してください'); return; }
+  if (isNaN(amount) || amount < 0) { showToast('金額を入力してください'); return; }
   if (!date)       { showToast('日付を選択してください'); return; }
 
   tx.name     = name;
