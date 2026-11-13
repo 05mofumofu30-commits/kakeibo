@@ -949,6 +949,8 @@ function recurringValueAt(base, history = [], month) {
 }
 
 function incomeAt(month) {
+  const override = (settings.monthlyIncomeOverrides || []).find(entry => entry.startMonth === month);
+  if (override) return override;
   return recurringValueAt({
     name: settings.incomeName,
     amount: settings.monthlyIncome,
@@ -1238,7 +1240,8 @@ function renderSummary() {
       </div>`;
   }).join('');
 
-  const incomeSince = income.startMonth ? formatMonth(income.startMonth) + 'から' : '毎月自動';
+  const incomeSince = income.monthOnly ? formatMonth(income.startMonth) + 'のみ'
+    : income.startMonth ? formatMonth(income.startMonth) + 'から' : '毎月自動';
   const incomeSettingItem = income.amount > 0 && incomeActive ? `
     <div class="tx-item">
       <div class="tx-icon" style="background:#38A16922">💼</div>
@@ -1583,7 +1586,7 @@ function renderRecurringHistory(history = []) {
 
 function renderSettingsHTML() {
   const currentMonth = toISODate(new Date()).slice(0, 7);
-  const income = incomeAt(currentMonth);
+  const income = incomeAt(viewMonth);
   const fixedList = settings.fixedExpenses.length === 0
     ? `<div class="empty" style="padding:12px"><p>固定費がまだ登録されていません</p></div>`
     : settings.fixedExpenses.map(f => {
@@ -1688,7 +1691,7 @@ function renderSettingsHTML() {
     </div>
 
     <div class="settings-section">
-      <div class="settings-section-title">💼 月の収入設定</div>
+      <div class="settings-section-title">💼 月ごとの給与設定</div>
       <div class="card income-setting">
         <div class="form-group" style="margin-bottom:10px">
           <label class="form-label">収入名</label>
@@ -1696,17 +1699,20 @@ function renderSettingsHTML() {
                  value="${escHtml(income.name)}" placeholder="例：給与" maxlength="20">
         </div>
         <div class="form-group" style="margin-bottom:12px">
-          <label class="form-label">毎月の収入</label>
+          <label class="form-label">この月の給与</label>
           <div class="amount-input-wrap">
             <span class="currency">¥</span>
             <input class="form-input" id="set-income-amount" type="number"
-                   value="${income.amount}" placeholder="0" min="0" inputmode="numeric">
+                   value="${!income.startMonth || income.startMonth <= viewMonth ? income.amount : 0}" placeholder="0" min="0" inputmode="numeric">
           </div>
         </div>
-        <label class="form-label">適用開始月
-          <input class="form-input" id="set-income-month" type="month" value="${currentMonth}">
+        <label class="form-label">適用する月
+          <input class="form-input" id="set-income-month" type="month" value="${viewMonth}"
+                 onchange="loadIncomeMonth(this.value)">
         </label>
-        ${renderRecurringHistory(settings.incomeHistory)}
+        ${(settings.monthlyIncomeOverrides || []).map(entry =>
+          `<div class="fixed-cat">${formatMonth(entry.startMonth)}のみ ${formatYen(entry.amount)}</div>`
+        ).join('')}
         <button class="btn-primary" onclick="saveIncomeSettings()">収入を保存</button>
       </div>
     </div>
@@ -1835,21 +1841,28 @@ function validRecurringChange(amount, month) {
   return true;
 }
 
+function loadIncomeMonth(month) {
+  if (!month) return;
+  const income = incomeAt(month);
+  document.getElementById('set-income-name').value = income.name;
+  document.getElementById('set-income-amount').value =
+    !income.startMonth || income.startMonth <= month ? income.amount : 0;
+}
+
 function saveIncomeSettings() {
   const name = document.getElementById('set-income-name').value.trim() || '給与';
   const amount = document.getElementById('set-income-amount').valueAsNumber;
   const startMonth = document.getElementById('set-income-month').value;
   if (!validRecurringChange(amount, startMonth)) return;
 
-  if (settings.incomeStartMonth && !settings.incomeHistory) {
-    settings.incomeHistory = [{ name: settings.incomeName, amount: settings.monthlyIncome, startMonth: settings.incomeStartMonth }];
-    delete settings.incomeStartMonth;
-    settings.monthlyIncome = 0;
-  }
-  settings.incomeHistory = saveRecurringChange(settings.incomeHistory, { name, amount, startMonth });
+  settings.monthlyIncomeOverrides = saveRecurringChange(settings.monthlyIncomeOverrides, {
+    name, amount, startMonth, monthOnly: true,
+  });
   saveSettings();
-  showToast('収入設定を保存しました');
+  showToast(formatMonth(startMonth) + 'の給与を保存しました');
   render();
+  document.getElementById('set-income-month').value = startMonth;
+  loadIncomeMonth(startMonth);
 }
 
 function saveFixedAmount(form, id) {
