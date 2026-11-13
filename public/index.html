@@ -942,8 +942,24 @@ function getMonthTransactions(month) {
   return transactions.filter(tx => tx.date >= start && tx.date <= end);
 }
 
+function recurringValueAt(base, history = [], month) {
+  return history.reduce((current, entry) =>
+    entry.startMonth <= month && entry.startMonth >= (current.startMonth || '') ? entry : current,
+    base);
+}
+
+function incomeAt(month) {
+  return recurringValueAt({
+    name: settings.incomeName,
+    amount: settings.monthlyIncome,
+    startMonth: settings.incomeStartMonth,
+  }, settings.incomeHistory, month);
+}
+
 function activeFixed(month) {
-  return settings.fixedExpenses.filter(f => !f.startMonth || f.startMonth <= month);
+  return settings.fixedExpenses
+    .filter(f => !f.startMonth || f.startMonth <= month)
+    .map(f => ({ ...f, amount: recurringValueAt(f, f.amountHistory, month).amount }));
 }
 
 function getMonthTotals(month) {
@@ -952,10 +968,11 @@ function getMonthTotals(month) {
   const varIncome    = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
   const fixedList    = activeFixed(month);
   const fixedTotal   = fixedList.reduce((s, f) => s + f.amount, 0);
-  const incomeActive = !settings.incomeStartMonth || settings.incomeStartMonth <= month;
+  const income = incomeAt(month);
+  const incomeActive = !income.startMonth || income.startMonth <= month;
   const totalExpense = varExpense + fixedTotal;
-  const totalIncome  = (incomeActive ? settings.monthlyIncome : 0) + varIncome;
-  return { varExpense, varIncome, fixedTotal, fixedList, totalExpense, totalIncome, incomeActive, balance: totalIncome - totalExpense };
+  const totalIncome  = (incomeActive ? income.amount : 0) + varIncome;
+  return { varExpense, varIncome, fixedTotal, fixedList, totalExpense, totalIncome, income, incomeActive, balance: totalIncome - totalExpense };
 }
 
 // 指定した年(YYYY)の年間収支を返す
@@ -1182,7 +1199,7 @@ function saveEditedTransaction() {
 // TAB: 月次確認
 // ══════════════════════════════════════════════════════════
 function renderSummary() {
-  const { totalIncome, totalExpense, balance, fixedTotal, fixedList, varExpense, incomeActive } = getMonthTotals(viewMonth);
+  const { totalIncome, totalExpense, balance, fixedTotal, fixedList, varExpense, income, incomeActive } = getMonthTotals(viewMonth);
   const txs = getMonthTransactions(viewMonth).sort((a, b) => b.date.localeCompare(a.date));
   const expenses = txs.filter(t => t.type === 'expense');
   const incomes  = txs.filter(t => t.type === 'income');
@@ -1221,15 +1238,15 @@ function renderSummary() {
       </div>`;
   }).join('');
 
-  const incomeSince = settings.incomeStartMonth ? formatMonth(settings.incomeStartMonth) + 'から' : '毎月自動';
-  const incomeSettingItem = settings.monthlyIncome > 0 && incomeActive ? `
+  const incomeSince = income.startMonth ? formatMonth(income.startMonth) + 'から' : '毎月自動';
+  const incomeSettingItem = income.amount > 0 && incomeActive ? `
     <div class="tx-item">
       <div class="tx-icon" style="background:#38A16922">💼</div>
       <div class="tx-info">
-        <div class="tx-name">${escHtml(settings.incomeName)}<span class="tx-fixed-badge">設定</span></div>
+        <div class="tx-name">${escHtml(income.name)}<span class="tx-fixed-badge">設定</span></div>
         <div class="tx-date">${incomeSince}</div>
       </div>
-      <div class="tx-amount amount-income">+${formatYen(settings.monthlyIncome)}</div>
+      <div class="tx-amount amount-income">+${formatYen(income.amount)}</div>
     </div>` : '';
 
   const incomeItems = incomes.map(tx => {
@@ -1558,11 +1575,20 @@ function toggleCategoryDetail(catId) {
 // ══════════════════════════════════════════════════════════
 // TAB: 設定
 // ══════════════════════════════════════════════════════════
+function renderRecurringHistory(history = []) {
+  return history.map(entry =>
+    '<div class="fixed-cat">' + formatMonth(entry.startMonth) + '〜 ' + formatYen(entry.amount) + '/月</div>'
+  ).join('');
+}
+
 function renderSettingsHTML() {
+  const currentMonth = toISODate(new Date()).slice(0, 7);
+  const income = incomeAt(currentMonth);
   const fixedList = settings.fixedExpenses.length === 0
     ? `<div class="empty" style="padding:12px"><p>固定費がまだ登録されていません</p></div>`
     : settings.fixedExpenses.map(f => {
         const cat = getCat(f.category);
+        const editMonth = f.startMonth && f.startMonth > currentMonth ? f.startMonth : currentMonth;
         return `
           <div class="fixed-item">
             <div class="fixed-info">
@@ -1571,7 +1597,22 @@ function renderSettingsHTML() {
             </div>
             <div class="fixed-amount">${formatYen(f.amount)}/月</div>
             <button class="btn-delete" onclick="deleteFixedExpense('${f.id}')">×</button>
-          </div>`;
+          </div>
+          <details>
+            <summary>金額を変更</summary>
+            ${renderRecurringHistory(f.amountHistory)}
+            <form class="income-setting" onsubmit="event.preventDefault(); saveFixedAmount(this, '${f.id}')">
+              <label class="form-label">毎月の金額
+                <input class="form-input" name="amount" type="number" min="0" step="1" required
+                       inputmode="numeric" value="${recurringValueAt(f, f.amountHistory, editMonth).amount}">
+              </label>
+              <label class="form-label">適用開始月
+                <input class="form-input" name="month" type="month" required
+                       min="${f.startMonth || '0001-01'}" value="${editMonth}">
+              </label>
+              <button class="btn-primary" type="submit">固定費の変更を保存</button>
+            </form>
+          </details>`;
       }).join('');
 
   const catOptions = getAllCategories().map(c =>
@@ -1652,16 +1693,20 @@ function renderSettingsHTML() {
         <div class="form-group" style="margin-bottom:10px">
           <label class="form-label">収入名</label>
           <input class="form-input" id="set-income-name" type="text"
-                 value="${escHtml(settings.incomeName)}" placeholder="例：給与" maxlength="20">
+                 value="${escHtml(income.name)}" placeholder="例：給与" maxlength="20">
         </div>
         <div class="form-group" style="margin-bottom:12px">
           <label class="form-label">毎月の収入</label>
           <div class="amount-input-wrap">
             <span class="currency">¥</span>
             <input class="form-input" id="set-income-amount" type="number"
-                   value="${settings.monthlyIncome || ''}" placeholder="0" min="0" inputmode="numeric">
+                   value="${income.amount}" placeholder="0" min="0" inputmode="numeric">
           </div>
         </div>
+        <label class="form-label">適用開始月
+          <input class="form-input" id="set-income-month" type="month" value="${currentMonth}">
+        </label>
+        ${renderRecurringHistory(settings.incomeHistory)}
         <button class="btn-primary" onclick="saveIncomeSettings()">収入を保存</button>
       </div>
     </div>
@@ -1773,18 +1818,55 @@ function saveCategoryBudgets() {
   showToast('予算を保存しました');
 }
 
-function saveIncomeSettings() {
-  const name   = document.getElementById('set-income-name').value.trim();
-  const amount = parseInt(document.getElementById('set-income-amount').value) || 0;
-  settings.incomeName    = name || '給与';
-  settings.monthlyIncome = amount;
-  if (amount > 0 && !settings.incomeStartMonth) {
-    settings.incomeStartMonth = toYearMonth(new Date());
-  } else if (amount === 0) {
-    delete settings.incomeStartMonth;
+function saveRecurringChange(history = [], entry) {
+  return [...history.filter(item => item.startMonth !== entry.startMonth), entry]
+    .sort((a, b) => a.startMonth.localeCompare(b.startMonth));
+}
+
+function validRecurringChange(amount, month) {
+  if (!Number.isSafeInteger(amount) || amount < 0) {
+    showToast('金額を0以上の整数で入力してください');
+    return false;
   }
+  if (!/^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    showToast('適用開始月を選択してください');
+    return false;
+  }
+  return true;
+}
+
+function saveIncomeSettings() {
+  const name = document.getElementById('set-income-name').value.trim() || '給与';
+  const amount = document.getElementById('set-income-amount').valueAsNumber;
+  const startMonth = document.getElementById('set-income-month').value;
+  if (!validRecurringChange(amount, startMonth)) return;
+
+  if (settings.incomeStartMonth && !settings.incomeHistory) {
+    settings.incomeHistory = [{ name: settings.incomeName, amount: settings.monthlyIncome, startMonth: settings.incomeStartMonth }];
+    delete settings.incomeStartMonth;
+    settings.monthlyIncome = 0;
+  }
+  settings.incomeHistory = saveRecurringChange(settings.incomeHistory, { name, amount, startMonth });
   saveSettings();
   showToast('収入設定を保存しました');
+  render();
+}
+
+function saveFixedAmount(form, id) {
+  const fixed = settings.fixedExpenses.find(item => item.id === id);
+  if (!fixed) return;
+
+  const amount = form.elements.namedItem('amount').valueAsNumber;
+  const startMonth = form.elements.namedItem('month').value;
+  if (!validRecurringChange(amount, startMonth)) return;
+  if (fixed.startMonth && startMonth < fixed.startMonth) {
+    showToast('固定費の登録開始月以降を選択してください');
+    return;
+  }
+  fixed.amountHistory = saveRecurringChange(fixed.amountHistory, { amount, startMonth });
+  saveSettings();
+  showToast('固定費の変更を保存しました');
+  render();
 }
 
 function addCustomCategory() {
